@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trojan Panel — Login</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #f8fafc; color: #1e293b;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  }
+  .login-card {
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 40px; width: 380px; max-width: 90vw; box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+  }
+  .login-card h1 { font-size: 22px; color: #0f172a; margin-bottom: 4px; }
+  .login-card .subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 28px; }
+  .field { margin-bottom: 18px; }
+  .field label { display: block; font-size: 13px; color: #64748b; margin-bottom: 6px; }
+  .field input {
+    width: 100%; padding: 10px 14px; background: #f8fafc;
+    border: 1px solid #cbd5e1; border-radius: 8px; color: #1e293b;
+    font-size: 14px; outline: none; transition: border-color 0.15s;
+  }
+  .field input:focus { border-color: #3b82f6; }
+  .btn {
+    width: 100%; padding: 10px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s;
+    background: #3b82f6; color: #fff; margin-top: 4px;
+  }
+  .btn:hover { background: #2563eb; }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .error { color: #ef4444; font-size: 13px; margin-bottom: 16px; display: none; }
+  .error.visible { display: block; }
+</style>
+</head>
+<body>
+
+<div class="login-card">
+  <h1>Trojan Panel</h1>
+  <p class="subtitle">Sign in to manage your server</p>
+  <div class="error" id="loginError">Invalid credentials</div>
+  <div class="field">
+    <label>Username</label>
+    <input id="loginUsername" placeholder="admin" autofocus>
+  </div>
+  <div class="field">
+    <label>Password</label>
+    <input id="loginPassword" type="password" placeholder="Enter password">
+  </div>
+  <button class="btn" id="loginBtn" onclick="doLogin()">Sign In</button>
+</div>
+
+<script>
+async function doLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errorEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+
+  if (!username || !password) {
+    errorEl.textContent = 'Username and password are required';
+    errorEl.classList.add('visible');
+    return;
+  }
+
+  errorEl.classList.remove('visible');
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+
+  try {
+    const res = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Login failed');
+    }
+    window.location.href = '/';
+  } catch (e) {
+    errorEl.textContent = e.message;
+    errorEl.classList.add('visible');
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+document.getElementById('loginPassword').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>

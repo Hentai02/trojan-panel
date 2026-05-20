@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trojan Panel</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; display: flex; }
+
+  .main { flex: 1; padding: 24px; overflow-y: auto; }
+  .main h1 { font-size: 24px; font-weight: 600; margin-bottom: 24px; color: #0f172a; }
+
+  .sidebar {
+    width: 220px; background: #ffffff; border-right: 1px solid #e2e8f0;
+    display: flex; flex-direction: column; padding: 20px 0;
+  }
+  .sidebar-header { padding: 0 20px 20px; border-bottom: 1px solid #e2e8f0; margin-bottom: 16px; }
+  .sidebar-header h2 { font-size: 16px; color: #64748b; font-weight: 500; }
+  .sidebar-nav { flex: 1; padding: 0 12px; }
+  .sidebar-nav a {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-radius: 6px; color: #64748b; text-decoration: none; font-size: 14px;
+    transition: background 0.15s, color 0.15s; margin-bottom: 2px;
+  }
+  .sidebar-nav a:hover { background: #f1f5f9; color: #0f172a; }
+  .sidebar-nav a.active { background: #3b82f6; color: #fff; }
+  .sidebar-footer { padding: 16px 20px 0; border-top: 1px solid #e2e8f0; margin-top: auto; font-size: 12px; color: #94a3b8; }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .toolbar { display: flex; gap: 12px; margin-bottom: 20px; }
+  .btn {
+    padding: 8px 18px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn-primary { background: #3b82f6; color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-danger { background: #ef4444; color: #fff; }
+  .btn-danger:hover { background: #dc2626; }
+  .btn-secondary { background: #e2e8f0; color: #334155; }
+  .btn-secondary:hover { background: #cbd5e1; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  table { width: 100%; border-collapse: collapse; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  th, td { padding: 12px 16px; text-align: left; }
+  th { background: #f1f5f9; font-weight: 600; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { border-top: 1px solid #e2e8f0; font-size: 14px; }
+  tr:hover td { background: #f8fafc; }
+  .mono { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; justify-content: center; align-items: center; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: #ffffff; border-radius: 12px; padding: 28px; width: 420px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+  .modal h2 { font-size: 18px; margin-bottom: 20px; color: #0f172a; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 13px; color: #64748b; margin-bottom: 6px; }
+  .field input { width: 100%; padding: 8px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; color: #1e293b; font-size: 14px; outline: none; }
+  .field input:focus { border-color: #3b82f6; }
+  .field-row { display: flex; gap: 12px; }
+  .field-row .field { flex: 1; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+
+  .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 200; animation: slideIn 0.3s ease; }
+  .toast-success { background: #16a34a; color: #fff; }
+  .toast-error { background: #ef4444; color: #fff; }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  .empty { text-align: center; padding: 48px; color: #94a3b8; }
+
+  .log-controls { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+  .log-controls label { font-size: 14px; color: #64748b; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .log-controls select { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; color: #1e293b; padding: 4px 8px; font-size: 13px; }
+  .log-viewer {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 16px; font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;
+    max-height: calc(100vh - 240px); overflow-y: auto; color: #334155;
+  }
+  .log-viewer .log-error { color: #dc2626; }
+  .log-viewer .log-warn { color: #d97706; }
+
+  .config-section { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  .config-section h3 { font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
+  .config-section .field textarea { width: 100%; padding: 8px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; color: #1e293b; font-size: 13px; font-family: 'Cascadia Code', 'Fira Code', monospace; outline: none; resize: vertical; }
+  .config-section .field textarea:focus { border-color: #3b82f6; }
+  .config-section .field select { width: 100%; padding: 8px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; color: #1e293b; font-size: 14px; outline: none; }
+  .config-section .field select:focus { border-color: #3b82f6; }
+  .config-section .field input[type="checkbox"] { width: auto; margin-right: 8px; }
+  .config-section .field .checkbox-label { display: inline-flex; align-items: center; font-size: 14px; color: #1e293b; cursor: pointer; }
+
+  .field .checkbox-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .status-card {
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;
+  }
+  .status-card .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .status-card .value { font-size: 20px; font-weight: 600; color: #0f172a; }
+  .status-card .value.mono { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 14px; }
+  .status-badge {
+    display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 500;
+  }
+  .status-badge.active { background: #dcfce7; color: #166534; }
+  .status-badge.inactive { background: #f1f5f9; color: #64748b; }
+  .status-badge.failed { background: #fee2e2; color: #991b1b; }
+  .status-badge.reloading { background: #fef3c7; color: #92400e; }
+
+  .usage-bar { height: 6px; border-radius: 3px; background: #e2e8f0; margin-top: 4px; overflow: hidden; }
+  .usage-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .usage-bar-fill.ok { background: #16a34a; }
+  .usage-bar-fill.warn { background: #d97706; }
+  .usage-bar-fill.over { background: #dc2626; }
+  .usage-pct { font-size: 11px; color: #94a3b8; }
+  tr.row-over td { background: #fef2f2; }
+  tr.row-warn td { background: #fffbeb; }
+  tr:hover.row-over td { background: #fee2e2; }
+  tr:hover.row-warn td { background: #fef3c7; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h2>Trojan Panel</h2>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="#" class="active" data-tab="users" onclick="switchTab('users')">
+      <span>&#x1f465;</span> Users
+    </a>
+    <a href="#" data-tab="logs" onclick="switchTab('logs')">
+      <span>&#x1f4c4;</span> Logs
+    </a>
+    <a href="#" data-tab="config" onclick="switchTab('config')">
+      <span>&#x2699;</span> Config
+    </a>
+    <a href="#" data-tab="status" onclick="switchTab('status')">
+      <span>&#x1f4ca;</span> Status
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="#" onclick="doLogout()" style="color:#94a3b8;text-decoration:none;font-size:12px;">Sign Out</a>
+  </div>
+</div>
+
+<div class="main">
+  <div class="tab-panel active" id="tab-users">
+    <h1>Trojan Users</h1>
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="openCreateModal()">+ New User</button>
+      <button class="btn btn-secondary" onclick="loadUsers()">Refresh</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Username</th>
+          <th>Quota</th>
+          <th>Usage</th>
+          <th>Download</th>
+          <th>Upload</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="userTableBody">
+        <tr><td colspan="7" class="empty">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tab-panel" id="tab-logs">
+    <h1>Service Logs — trojan.service</h1>
+    <div class="log-controls">
+      <button class="btn btn-secondary btn-sm" onclick="loadLogs()">Refresh</button>
+      <label>
+        <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"> Auto-refresh
+      </label>
+      <select id="logLines" onchange="loadLogs()">
+        <option value="100">100 lines</option>
+        <option value="200" selected>200 lines</option>
+        <option value="500">500 lines</option>
+        <option value="1000">1000 lines</option>
+      </select>
+      <span style="color:#64748b;font-size:12px;margin-left:auto;" id="logStatus"></span>
+    </div>
+    <pre class="log-viewer" id="logViewer">Loading...</pre>
+  </div>
+
+  <div class="tab-panel" id="tab-config">
+    <h1>Configuration — /etc/trojan/config.json</h1>
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="saveConfig()">Save Config</button>
+      <button class="btn btn-secondary" onclick="loadConfig()">Reload</button>
+      <button class="btn btn-danger" id="restartBtn" onclick="restartService()">Restart Service</button>
+    </div>
+    <div id="configForm">
+      <div class="config-section">
+        <h3>General</h3>
+        <div class="field-row">
+          <div class="field">
+            <label>Run Type</label>
+            <select id="cfg_run_type">
+              <option value="server">server</option>
+              <option value="client">client</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Log Level</label>
+            <select id="cfg_log_level">
+              <option value="0">0 - All</option>
+              <option value="1">1 - Info</option>
+              <option value="2">2 - Warn</option>
+              <option value="3">3 - Error</option>
+              <option value="4">4 - Fatal</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Local Address</label><input id="cfg_local_addr" placeholder="0.0.0.0"></div>
+          <div class="field"><label>Local Port</label><input id="cfg_local_port" type="number" placeholder="443"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Remote Address</label><input id="cfg_remote_addr" placeholder="127.0.0.1"></div>
+          <div class="field"><label>Remote Port</label><input id="cfg_remote_port" type="number" placeholder="80"></div>
+        </div>
+        <div class="field">
+          <label>Passwords (one per line)</label>
+          <textarea id="cfg_password" rows="4" placeholder="password1&#10;password2"></textarea>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <h3>SSL</h3>
+        <div class="field-row">
+          <div class="field"><label>Cert Path</label><input id="cfg_ssl_cert" placeholder="/path/to/certificate.crt"></div>
+          <div class="field"><label>Key Path</label><input id="cfg_ssl_key" placeholder="/path/to/private.key"></div>
+        </div>
+        <div class="field"><label>Key Password</label><input id="cfg_ssl_key_password" placeholder="(optional)"></div>
+        <div class="field"><label>Cipher</label><input id="cfg_ssl_cipher"></div>
+        <div class="field"><label>Cipher TLS 1.3</label><input id="cfg_ssl_cipher_tls13"></div>
+        <div class="field-row">
+          <div class="field">
+            <label class="checkbox-label"><input type="checkbox" id="cfg_ssl_prefer_server_cipher"> Prefer Server Cipher</label>
+          </div>
+          <div class="field">
+            <label class="checkbox-label"><input type="checkbox" id="cfg_ssl_reuse_session"> Reuse Session</label>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="checkbox-label"><input type="checkbox" id="cfg_ssl_session_ticket"> Session Ticket</label>
+          </div>
+          <div class="field"><label>Session Timeout</label><input id="cfg_ssl_session_timeout" type="number" placeholder="600"></div>
+        </div>
+        <div class="field"><label>ALPN (one per line)</label><textarea id="cfg_ssl_alpn" rows="3" placeholder="http/1.1"></textarea></div>
+        <div class="field"><label>ALPN Port Override (JSON)</label><textarea id="cfg_ssl_alpn_port_override" rows="3" placeholder='{"h2": 81}'></textarea></div>
+        <div class="field-row">
+          <div class="field"><label>Plain HTTP Response</label><input id="cfg_ssl_plain_http_response"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Curves</label><input id="cfg_ssl_curves"></div>
+          <div class="field"><label>DH Param</label><input id="cfg_ssl_dhparam"></div>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <h3>TCP</h3>
+        <div class="field-row">
+          <div class="field"><label class="checkbox-label"><input type="checkbox" id="cfg_tcp_prefer_ipv4"> Prefer IPv4</label></div>
+          <div class="field"><label class="checkbox-label"><input type="checkbox" id="cfg_tcp_no_delay"> No Delay</label></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="checkbox-label"><input type="checkbox" id="cfg_tcp_keep_alive"> Keep Alive</label></div>
+          <div class="field"><label class="checkbox-label"><input type="checkbox" id="cfg_tcp_reuse_port"> Reuse Port</label></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="checkbox-label"><input type="checkbox" id="cfg_tcp_fast_open"> Fast Open</label></div>
+          <div class="field"><label>Fast Open Qlen</label><input id="cfg_tcp_fast_open_qlen" type="number" placeholder="20"></div>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <h3>MySQL</h3>
+        <div class="field"><label class="checkbox-label"><input type="checkbox" id="cfg_mysql_enabled"> Enabled</label></div>
+        <div class="field-row">
+          <div class="field"><label>Server Address</label><input id="cfg_mysql_server_addr" placeholder="127.0.0.1"></div>
+          <div class="field"><label>Server Port</label><input id="cfg_mysql_server_port" type="number" placeholder="3306"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Database</label><input id="cfg_mysql_database" placeholder="trojan"></div>
+          <div class="field"><label>Username</label><input id="cfg_mysql_username" placeholder="trojan"></div>
+        </div>
+        <div class="field"><label>Password</label><input id="cfg_mysql_password" placeholder=""></div>
+        <div class="field-row">
+          <div class="field"><label>Key</label><input id="cfg_mysql_key"></div>
+          <div class="field"><label>Cert</label><input id="cfg_mysql_cert"></div>
+        </div>
+        <div class="field"><label>CA</label><input id="cfg_mysql_ca"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-status">
+    <h1>Service Status — trojan.service</h1>
+    <div class="toolbar">
+      <button class="btn btn-secondary btn-sm" onclick="loadStatus()">Refresh</button>
+      <label style="font-size:14px;color:#64748b;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="statusAutoRefresh" onchange="toggleStatusRefresh()"> Auto-refresh
+      </label>
+      <span style="color:#94a3b8;font-size:12px;margin-left:auto;" id="statusTimestamp"></span>
+    </div>
+    <div class="status-grid" id="statusGrid">
+      <div class="status-card"><div class="label">STATE</div><div class="value"><span class="status-badge reloading">Loading...</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <h2 id="modalTitle">New User</h2>
+    <div class="field">
+      <label>Username</label>
+      <input id="modalUsername" placeholder="e.g. john_doe" maxlength="64">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input id="modalPassword" type="password" placeholder="Enter password">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Quota (Bytes)</label>
+        <input id="modalQuota" type="number" value="0" placeholder="0">
+        <label class="checkbox-label" style="margin-top:6px;">
+          <input type="checkbox" id="modalQuotaUnlimited" onchange="onQuotaUnlimitedChange()"> Unlimited
+        </label>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Download (Bytes)</label>
+        <input id="modalDownload" type="number" value="0" min="0" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Upload (Bytes)</label>
+        <input id="modalUpload" type="number" value="0" min="0" placeholder="0">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modalSubmitBtn" onclick="submitModal()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let editingId = null;
+let logTimer = null;
+let statusTimer = null;
+let activeTab = 'users';
+
+function switchTab(name) {
+  activeTab = name;
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector('[data-tab="' + name + '"]').classList.add('active');
+
+  if (name === 'users') loadUsers();
+  if (name === 'logs') loadLogs();
+  if (name === 'config') loadConfig();
+  if (name === 'status') loadStatus();
+}
+
+async function doLogout() {
+  await fetch('/auth/logout', { method: 'POST' });
+  window.location.href = '/login.html';
+}
+
+function handleAuthError(res) {
+  if (res.status === 401) {
+    window.location.href = '/login.html';
+    return true;
+  }
+  return false;
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (n < 0) return 'Unlimited';
+  if (n === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+  return (n / Math.pow(1024, i)).toFixed(2) + ' ' + units[i];
+}
+
+function quotaUsage(user) {
+  if (user.quota < 0) return { pct: 0, css: 'ok', label: 'Unlimited' };
+  if (user.quota === 0) return { pct: 0, css: 'ok', label: '0%' };
+  const used = user.download + user.upload;
+  const pct = Math.min((used / user.quota) * 100, 100);
+  let css = 'ok';
+  if (pct >= 100) css = 'over';
+  else if (pct >= 80) css = 'warn';
+  return { pct, css, label: pct.toFixed(1) + '%' };
+}
+
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function closeModal() {
+  document.getElementById('userModal').classList.remove('active');
+  editingId = null;
+}
+
+function onQuotaUnlimitedChange() {
+  const checked = document.getElementById('modalQuotaUnlimited').checked;
+  const input = document.getElementById('modalQuota');
+  input.disabled = checked;
+  if (checked) input.value = '0';
+  input.style.opacity = checked ? '0.5' : '1';
+}
+
+function openCreateModal() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = 'New User';
+  document.getElementById('modalSubmitBtn').textContent = 'Create';
+  document.getElementById('modalUsername').value = '';
+  document.getElementById('modalPassword').value = '';
+  document.getElementById('modalQuota').value = '0';
+  document.getElementById('modalQuotaUnlimited').checked = false;
+  onQuotaUnlimitedChange();
+  document.getElementById('modalDownload').value = '0';
+  document.getElementById('modalUpload').value = '0';
+  document.getElementById('userModal').classList.add('active');
+}
+
+function openEditModal(user) {
+  editingId = user.id;
+  const unlimited = user.quota < 0;
+  document.getElementById('modalTitle').textContent = 'Edit User #' + user.id;
+  document.getElementById('modalSubmitBtn').textContent = 'Save';
+  document.getElementById('modalUsername').value = user.username;
+  document.getElementById('modalPassword').value = '';
+  document.getElementById('modalQuota').value = unlimited ? '0' : user.quota;
+  document.getElementById('modalQuotaUnlimited').checked = unlimited;
+  onQuotaUnlimitedChange();
+  document.getElementById('modalDownload').value = user.download;
+  document.getElementById('modalUpload').value = user.upload;
+  document.getElementById('userModal').classList.add('active');
+}
+
+async function submitModal() {
+  const username = document.getElementById('modalUsername').value.trim();
+  const password = document.getElementById('modalPassword').value;
+  const download = document.getElementById('modalDownload').value;
+  const upload = document.getElementById('modalUpload').value;
+
+  if (!username) return toast('Username is required', 'error');
+
+  const unlimited = document.getElementById('modalQuotaUnlimited').checked;
+  const quota = unlimited ? -1 : Number(document.getElementById('modalQuota').value);
+  const body = { username, quota, download: Number(download), upload: Number(upload) };
+  if (editingId) {
+    if (password) body.password = password;
+  } else {
+    if (!password) return toast('Password is required', 'error');
+    body.password = password;
+  }
+
+  const method = editingId ? 'PUT' : 'POST';
+  const url = editingId ? '/users/' + editingId : '/users';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (handleAuthError(res)) return;
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error);
+    }
+    closeModal();
+    loadUsers();
+    toast(editingId ? 'User updated' : 'User created', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteUser(id) {
+  if (!confirm('Delete user #' + id + '?')) return;
+  try {
+    const res = await fetch('/users/' + id, { method: 'DELETE' });
+    if (handleAuthError(res)) return;
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error);
+    }
+    loadUsers();
+    toast('User deleted', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function loadUsers() {
+  try {
+    const res = await fetch('/users');
+    if (handleAuthError(res)) return;
+    const users = await res.json();
+    const tbody = document.getElementById('userTableBody');
+    if (users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No users found</td></tr>';
+      return;
+    }
+    tbody.innerHTML = users.map(u => {
+      const usage = quotaUsage(u);
+      let rowClass = '';
+      if (usage.css === 'over') rowClass = ' row-over';
+      else if (usage.css === 'warn') rowClass = ' row-warn';
+      return `
+      <tr class="${rowClass}">
+        <td>${u.id}</td>
+        <td class="mono">${u.username}</td>
+        <td class="mono">${formatBytes(u.quota)}</td>
+        <td>
+          <span class="usage-pct">${usage.label}</span>
+          <div class="usage-bar"><div class="usage-bar-fill ${usage.css}" style="width:${usage.pct}%"></div></div>
+        </td>
+        <td class="mono">${formatBytes(u.download)}</td>
+        <td class="mono">${formatBytes(u.upload)}</td>
+        <td>
+          <button class="btn btn-primary btn-sm" onclick='openEditModal(${JSON.stringify(u)})'>Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id})">Delete</button>
+        </td>
+      </tr>
+    `}).join('');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function colorizeLogs(text) {
+  return text
+    .replace(/error|fail|critical/gi, m => '<span class="log-error">' + m + '</span>')
+    .replace(/warn(ing)?/gi, m => '<span class="log-warn">' + m + '</span>');
+}
+
+async function loadLogs() {
+  const viewer = document.getElementById('logViewer');
+  const status = document.getElementById('logStatus');
+  viewer.textContent = 'Loading...';
+  status.textContent = '';
+
+  const lines = document.getElementById('logLines').value;
+  try {
+    const res = await fetch('/logs?lines=' + lines);
+    if (handleAuthError(res)) return;
+    if (!res.ok) {
+      const err = await res.json();
+      viewer.innerHTML = '<span class="log-error">Error: ' + (err.error || 'Failed to load logs') + '</span>';
+      return;
+    }
+    const data = await res.json();
+    viewer.innerHTML = colorizeLogs(data.logs);
+    status.textContent = new Date().toLocaleTimeString();
+  } catch (e) {
+    viewer.innerHTML = '<span class="log-error">' + e.message + '</span>';
+  }
+}
+
+function toggleAutoRefresh() {
+  const checked = document.getElementById('autoRefresh').checked;
+  if (checked) {
+    logTimer = setInterval(loadLogs, 5000);
+  } else {
+    clearInterval(logTimer);
+    logTimer = null;
+  }
+}
+
+document.getElementById('userModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeModal();
+});
+
+loadUsers();
+
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  if (el.type === 'checkbox') el.checked = !!val;
+  else if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') el.value = val != null ? val : '';
+  else el.value = val != null ? val : '';
+}
+
+function getVal(id) {
+  const el = document.getElementById(id);
+  if (el.type === 'checkbox') return el.checked;
+  return el.value;
+}
+
+function arrFromTextarea(id) {
+  const val = document.getElementById(id).value.trim();
+  return val ? val.split('\n').map(s => s.trim()).filter(Boolean) : [];
+}
+
+function textareaFromArr(arr) {
+  return Array.isArray(arr) ? arr.join('\n') : '';
+}
+
+function parseJsonField(id) {
+  const val = document.getElementById(id).value.trim();
+  if (!val) return {};
+  try { return JSON.parse(val); } catch (e) { return {}; }
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch('/config');
+    if (handleAuthError(res)) return;
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+    const c = await res.json();
+
+    setVal('cfg_run_type', c.run_type);
+    setVal('cfg_local_addr', c.local_addr);
+    setVal('cfg_local_port', c.local_port);
+    setVal('cfg_remote_addr', c.remote_addr);
+    setVal('cfg_remote_port', c.remote_port);
+    setVal('cfg_log_level', c.log_level);
+    document.getElementById('cfg_password').value = textareaFromArr(c.password);
+
+    if (c.ssl) {
+      setVal('cfg_ssl_cert', c.ssl.cert);
+      setVal('cfg_ssl_key', c.ssl.key);
+      setVal('cfg_ssl_key_password', c.ssl.key_password);
+      setVal('cfg_ssl_cipher', c.ssl.cipher);
+      setVal('cfg_ssl_cipher_tls13', c.ssl.cipher_tls13);
+      setVal('cfg_ssl_prefer_server_cipher', c.ssl.prefer_server_cipher);
+      setVal('cfg_ssl_reuse_session', c.ssl.reuse_session);
+      setVal('cfg_ssl_session_ticket', c.ssl.session_ticket);
+      setVal('cfg_ssl_session_timeout', c.ssl.session_timeout);
+      setVal('cfg_ssl_plain_http_response', c.ssl.plain_http_response);
+      setVal('cfg_ssl_curves', c.ssl.curves);
+      setVal('cfg_ssl_dhparam', c.ssl.dhparam);
+      document.getElementById('cfg_ssl_alpn').value = textareaFromArr(c.ssl.alpn);
+      document.getElementById('cfg_ssl_alpn_port_override').value = c.ssl.alpn_port_override ? JSON.stringify(c.ssl.alpn_port_override, null, 2) : '';
+    }
+
+    if (c.tcp) {
+      setVal('cfg_tcp_prefer_ipv4', c.tcp.prefer_ipv4);
+      setVal('cfg_tcp_no_delay', c.tcp.no_delay);
+      setVal('cfg_tcp_keep_alive', c.tcp.keep_alive);
+      setVal('cfg_tcp_reuse_port', c.tcp.reuse_port);
+      setVal('cfg_tcp_fast_open', c.tcp.fast_open);
+      setVal('cfg_tcp_fast_open_qlen', c.tcp.fast_open_qlen);
+    }
+
+    if (c.mysql) {
+      setVal('cfg_mysql_enabled', c.mysql.enabled);
+      setVal('cfg_mysql_server_addr', c.mysql.server_addr);
+      setVal('cfg_mysql_server_port', c.mysql.server_port);
+      setVal('cfg_mysql_database', c.mysql.database);
+      setVal('cfg_mysql_username', c.mysql.username);
+      setVal('cfg_mysql_password', c.mysql.password);
+      setVal('cfg_mysql_key', c.mysql.key);
+      setVal('cfg_mysql_cert', c.mysql.cert);
+      setVal('cfg_mysql_ca', c.mysql.ca);
+    }
+
+    toast('Config loaded', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function saveConfig() {
+  const config = {
+    run_type: getVal('cfg_run_type'),
+    local_addr: getVal('cfg_local_addr'),
+    local_port: Number(getVal('cfg_local_port')),
+    remote_addr: getVal('cfg_remote_addr'),
+    remote_port: Number(getVal('cfg_remote_port')),
+    password: arrFromTextarea('cfg_password'),
+    log_level: Number(getVal('cfg_log_level')),
+    ssl: {
+      cert: getVal('cfg_ssl_cert'),
+      key: getVal('cfg_ssl_key'),
+      key_password: getVal('cfg_ssl_key_password'),
+      cipher: getVal('cfg_ssl_cipher'),
+      cipher_tls13: getVal('cfg_ssl_cipher_tls13'),
+      prefer_server_cipher: getVal('cfg_ssl_prefer_server_cipher'),
+      alpn: arrFromTextarea('cfg_ssl_alpn'),
+      alpn_port_override: parseJsonField('cfg_ssl_alpn_port_override'),
+      reuse_session: getVal('cfg_ssl_reuse_session'),
+      session_ticket: getVal('cfg_ssl_session_ticket'),
+      session_timeout: Number(getVal('cfg_ssl_session_timeout')),
+      plain_http_response: getVal('cfg_ssl_plain_http_response'),
+      curves: getVal('cfg_ssl_curves'),
+      dhparam: getVal('cfg_ssl_dhparam')
+    },
+    tcp: {
+      prefer_ipv4: getVal('cfg_tcp_prefer_ipv4'),
+      no_delay: getVal('cfg_tcp_no_delay'),
+      keep_alive: getVal('cfg_tcp_keep_alive'),
+      reuse_port: getVal('cfg_tcp_reuse_port'),
+      fast_open: getVal('cfg_tcp_fast_open'),
+      fast_open_qlen: Number(getVal('cfg_tcp_fast_open_qlen'))
+    },
+    mysql: {
+      enabled: getVal('cfg_mysql_enabled'),
+      server_addr: getVal('cfg_mysql_server_addr'),
+      server_port: Number(getVal('cfg_mysql_server_port')),
+      database: getVal('cfg_mysql_database'),
+      username: getVal('cfg_mysql_username'),
+      password: getVal('cfg_mysql_password'),
+      key: getVal('cfg_mysql_key'),
+      cert: getVal('cfg_mysql_cert'),
+      ca: getVal('cfg_mysql_ca')
+    }
+  };
+
+  try {
+    const res = await fetch('/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    if (handleAuthError(res)) return;
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+    toast('Config saved', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function restartService() {
+  if (!confirm('Restart trojan.service?')) return;
+  const btn = document.getElementById('restartBtn');
+  btn.disabled = true;
+  btn.textContent = 'Restarting...';
+  try {
+    const res = await fetch('/config/restart', { method: 'POST' });
+    if (handleAuthError(res)) { btn.disabled = false; btn.textContent = 'Restart Service'; return; }
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+    toast('Service restarted', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Restart Service';
+  }
+}
+
+async function loadStatus() {
+  const grid = document.getElementById('statusGrid');
+  const ts = document.getElementById('statusTimestamp');
+  grid.innerHTML = '<div class="status-card"><div class="label">STATE</div><div class="value"><span class="status-badge reloading">Loading...</span></div></div>';
+  ts.textContent = '';
+
+  try {
+    const res = await fetch('/status');
+    if (handleAuthError(res)) return;
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+    const s = await res.json();
+
+    let badgeClass = 'inactive';
+    if (s.activeState === 'active') badgeClass = 'active';
+    else if (s.activeState === 'failed') badgeClass = 'failed';
+    else if (s.activeState === 'reloading') badgeClass = 'reloading';
+
+    const cards = [
+      { label: 'STATE', value: '<span class="status-badge ' + badgeClass + '">' + s.activeState + '</span>' },
+      { label: 'SUB STATE', value: s.subState || '—' },
+      { label: 'LOAD STATE', value: s.loadState },
+      { label: 'UNIT FILE', value: s.unitFileState },
+      { label: 'PID', value: s.mainPID || '—' },
+      { label: 'UPTIME', value: s.uptime || '—' },
+      { label: 'CPU', value: s.cpuPercent != null ? s.cpuPercent + '%' : '—' },
+      { label: 'MEMORY', value: s.memPercent != null ? s.memPercent + '%' : '—' },
+      { label: 'RSS', value: s.memRssFormatted || '—' }
+    ];
+
+    grid.innerHTML = cards.map(c =>
+      '<div class="status-card"><div class="label">' + c.label + '</div><div class="value mono">' + c.value + '</div></div>'
+    ).join('');
+
+    ts.textContent = new Date().toLocaleTimeString();
+  } catch (e) {
+    grid.innerHTML = '<div class="status-card"><div class="label">STATE</div><div class="value"><span class="status-badge failed">Error</span></div></div>';
+    ts.textContent = e.message;
+  }
+}
+
+function toggleStatusRefresh() {
+  const checked = document.getElementById('statusAutoRefresh').checked;
+  if (checked) {
+    statusTimer = setInterval(loadStatus, 3000);
+  } else {
+    clearInterval(statusTimer);
+    statusTimer = null;
+  }
+}
+</script>
+</body>
+</html>
