@@ -9,7 +9,7 @@ const ADMIN_PASS_HASH = null;
 const LOG_MAX_LINES = 2000;
 const LOG_DEFAULT_LINES = 200;
 
-const CONFIG_PATH = '/etc/trojan/config.json';
+const CONFIG_PATH = '/usr/local/etc/trojan/config.json';
 
 const PORT = process.env.PORT || 3000;
 
