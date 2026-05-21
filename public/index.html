@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trojan Panel</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; display: flex; }
@@ -106,6 +107,11 @@
   .status-badge.inactive { background: #f1f5f9; color: #64748b; }
   .status-badge.failed { background: #fee2e2; color: #991b1b; }
   .status-badge.reloading { background: #fef3c7; color: #92400e; }
+
+  .chart-gauge { width: 100%; height: 160px; }
+  .chart-history { width: 100%; height: 240px; margin-top: 20px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+  .gauges-row { display: flex; gap: 16px; margin-bottom: 20px; }
+  .gauge-card { flex: 1; min-width: 200px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 8px 4px; }
 
   .usage-bar { height: 6px; border-radius: 3px; background: #e2e8f0; margin-top: 4px; overflow: hidden; }
   .usage-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
@@ -310,6 +316,12 @@
       </label>
       <span style="color:#94a3b8;font-size:12px;margin-left:auto;" id="statusTimestamp"></span>
     </div>
+    <div class="gauges-row">
+      <div class="gauge-card"><div class="chart-gauge" id="cpuGauge"></div></div>
+      <div class="gauge-card"><div class="chart-gauge" id="memGauge"></div></div>
+      <div class="gauge-card"><div class="chart-gauge" id="rssGauge"></div></div>
+    </div>
+    <div class="chart-history" id="historyChart"></div>
     <div class="status-grid" id="statusGrid">
       <div class="status-card"><div class="label">STATE</div><div class="value"><span class="status-badge reloading">Loading...</span></div></div>
     </div>
@@ -358,6 +370,14 @@ let editingId = null;
 let logTimer = null;
 let statusTimer = null;
 let activeTab = 'users';
+let cpuGaugeChart = null;
+let memGaugeChart = null;
+let rssGaugeChart = null;
+let historyChart = null;
+let cpuHistory = [];
+let memHistory = [];
+let timeLabels = [];
+const MAX_HISTORY = 30;
 
 function switchTab(name) {
   activeTab = name;
@@ -369,7 +389,7 @@ function switchTab(name) {
   if (name === 'users') loadUsers();
   if (name === 'logs') loadLogs();
   if (name === 'config') loadConfig();
-  if (name === 'status') loadStatus();
+  if (name === 'status') { loadStatus(); setTimeout(resizeCharts, 50); }
 }
 
 async function doLogout() {
@@ -785,15 +805,20 @@ async function loadStatus() {
       { label: 'LOAD STATE', value: s.loadState },
       { label: 'UNIT FILE', value: s.unitFileState },
       { label: 'PID', value: s.mainPID || '—' },
-      { label: 'UPTIME', value: s.uptime || '—' },
-      { label: 'CPU', value: s.cpuPercent != null ? s.cpuPercent + '%' : '—' },
-      { label: 'MEMORY', value: s.memPercent != null ? s.memPercent + '%' : '—' },
-      { label: 'RSS', value: s.memRssFormatted || '—' }
+      { label: 'UPTIME', value: s.uptime || '—' }
     ];
 
     grid.innerHTML = cards.map(c =>
       '<div class="status-card"><div class="label">' + c.label + '</div><div class="value mono">' + c.value + '</div></div>'
     ).join('');
+
+    const cpuVal = s.cpuPercent != null ? s.cpuPercent : 0;
+    const memVal = s.memPercent != null ? s.memPercent : 0;
+    const rssVal = s.memRssFormatted || '—';
+
+    initCharts();
+    updateGauges(cpuVal, memVal, rssVal);
+    updateHistory(cpuVal, memVal);
 
     ts.textContent = new Date().toLocaleTimeString();
   } catch (e) {
@@ -810,6 +835,87 @@ function toggleStatusRefresh() {
     clearInterval(statusTimer);
     statusTimer = null;
   }
+}
+
+function initCharts() {
+  if (cpuGaugeChart) return;
+  cpuGaugeChart = echarts.init(document.getElementById('cpuGauge'));
+  memGaugeChart = echarts.init(document.getElementById('memGauge'));
+  rssGaugeChart = echarts.init(document.getElementById('rssGauge'));
+  historyChart = echarts.init(document.getElementById('historyChart'));
+}
+
+function resizeCharts() {
+  if (cpuGaugeChart) { cpuGaugeChart.resize(); memGaugeChart.resize(); rssGaugeChart.resize(); historyChart.resize(); }
+}
+
+function makeGaugeOption(title, value, pct) {
+  return {
+    series: [{
+      type: 'gauge',
+      startAngle: 200,
+      endAngle: -20,
+      min: 0,
+      max: 100,
+      splitNumber: 5,
+      axisLine: { lineStyle: { width: 6, color: [[0.6, '#16a34a'], [0.8, '#d97706'], [1, '#dc2626']] } },
+      pointer: { length: '70%', width: 4, itemStyle: { color: '#64748b' } },
+      axisTick: { distance: -8, length: 4, lineStyle: { width: 1, color: '#cbd5e1' } },
+      splitLine: { distance: -12, length: 8, lineStyle: { width: 2, color: '#cbd5e1' } },
+      axisLabel: { distance: 20, color: '#94a3b8', fontSize: 10 },
+      anchor: { show: true, size: 12, itemStyle: { color: '#64748b' } },
+      title: { offsetCenter: [0, '75%'], color: '#94a3b8', fontSize: 11 },
+      detail: { valueAnimation: true, fontSize: 20, color: '#0f172a', offsetCenter: [0, '50%'], formatter: function(v) { return value; } },
+      data: [{ value: pct, name: title }]
+    }]
+  };
+}
+
+function updateGauges(cpuVal, memVal, rssVal) {
+  const cpuOpt = makeGaugeOption('CPU', cpuVal.toFixed(1) + '%', Math.min(cpuVal, 100));
+  const memOpt = makeGaugeOption('MEM', memVal.toFixed(1) + '%', Math.min(memVal, 100));
+  const rssOpt = {
+    series: [{
+      type: 'gauge',
+      startAngle: 200, endAngle: -20,
+      axisLine: { lineStyle: { width: 6, color: [[1, '#3b82f6']] } },
+      pointer: { length: '70%', width: 4, itemStyle: { color: '#64748b' } },
+      axisTick: { distance: -8, length: 4, lineStyle: { width: 1, color: '#cbd5e1' } },
+      splitLine: { distance: -12, length: 8, lineStyle: { width: 2, color: '#cbd5e1' } },
+      axisLabel: { show: false },
+      anchor: { show: true, size: 12, itemStyle: { color: '#64748b' } },
+      title: { offsetCenter: [0, '75%'], color: '#94a3b8', fontSize: 11 },
+      detail: { valueAnimation: true, fontSize: 18, color: '#0f172a', offsetCenter: [0, '55%'], formatter: function() { return rssVal; } },
+      data: [{ value: 0, name: 'RSS' }]
+    }]
+  };
+  cpuGaugeChart.setOption(cpuOpt);
+  memGaugeChart.setOption(memOpt);
+  rssGaugeChart.setOption(rssOpt);
+}
+
+function updateHistory(cpuVal, memVal) {
+  const now = new Date().toLocaleTimeString();
+  cpuHistory.push(cpuVal);
+  memHistory.push(memVal);
+  timeLabels.push(now);
+  if (cpuHistory.length > MAX_HISTORY) { cpuHistory.shift(); memHistory.shift(); timeLabels.shift(); }
+
+  historyChart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['CPU %', 'MEM %'], bottom: 0, textStyle: { color: '#94a3b8', fontSize: 11 } },
+    grid: { top: 10, right: 20, bottom: 30, left: 40 },
+    xAxis: { type: 'category', data: timeLabels, axisLabel: { color: '#94a3b8', fontSize: 9, rotate: 30 },
+      axisLine: { lineStyle: { color: '#e2e8f0' } } },
+    yAxis: { type: 'value', max: function(v) { return Math.max(100, Math.ceil(v.max / 10) * 10); },
+      axisLabel: { color: '#94a3b8', fontSize: 10 }, splitLine: { lineStyle: { color: '#f1f5f9' } } },
+    series: [
+      { name: 'CPU %', type: 'line', data: cpuHistory, smooth: true, symbol: 'none',
+        lineStyle: { color: '#3b82f6', width: 2 }, areaStyle: { color: 'rgba(59,130,246,0.08)' } },
+      { name: 'MEM %', type: 'line', data: memHistory, smooth: true, symbol: 'none',
+        lineStyle: { color: '#16a34a', width: 2 }, areaStyle: { color: 'rgba(22,163,74,0.08)' } }
+    ]
+  });
 }
 </script>
 </body>
